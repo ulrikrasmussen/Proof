@@ -4,7 +4,10 @@ module Proof.Language(
  , showPhi
  , asciiFormat
  , latexFormat
- , Premise) where
+ , Premise
+ , implFree
+ , nnf
+ , cnf) where
 
 data Phi = L String
          | Phi :&: Phi
@@ -73,3 +76,29 @@ showPhi pf phi = showPhi' pf phi 0
        in parens s 0 prec
     showPhi' pf (Not p) prec =
       pfNot pf ++ parens (showPhi' pf p 3) 3 prec
+
+implFree :: Phi -> Phi
+implFree (a :-> b) = Not (implFree a) :|: implFree b
+implFree (a :|: b) = implFree a :|: implFree b
+implFree (a :&: b) = implFree a :&: implFree b
+implFree (Not p) = Not $ implFree p
+implFree (L s) = L s
+implFree Bot = Bot
+
+nnf :: Phi -> Phi
+nnf (Not (Not a)) = nnf a
+nnf (Not (a :&: b)) = nnf (Not a) :|: nnf (Not b)
+nnf (Not (a :|: b)) = nnf (Not a) :&: nnf (Not b)
+nnf (a :&: b) = nnf a :&: nnf b
+nnf (a :|: b) = nnf a :|: nnf b
+nnf (L s) = L s
+nnf (Not (L s)) = Not (L s)
+
+distr :: Phi -> Phi -> Phi
+distr (n11 :&: n12) n2 = distr n11 n2 :&: distr n12 n2
+distr n1 (n21 :&: n22) = distr n1 n21 :&: distr n1 n22
+distr n1 n2 = n1 :|: n2
+
+cnf (p1 :&: p2) = cnf p1 :&: cnf p2
+cnf (p1 :|: p2) = distr (cnf p1) (cnf p2)
+cnf x = x
