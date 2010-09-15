@@ -13,6 +13,7 @@ module Proof.Monad(
     CondFact, getCond,
     MonadProof,
     assume,
+    prem,
     and_el, and_er, and_i,
     or_e, or_il, or_ir,
     imp_i, imp_e,
