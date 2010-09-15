@@ -12,6 +12,7 @@ module Proof.Monad(
     Fact, getFact,
     CondFact, getCond,
     MonadProof,
+    derivedRule,
     assume,
     prem,
     and_el, and_er, and_i,
@@ -103,6 +104,8 @@ getCondFactLabel :: CondFact -> LatexProof (String, String)
 getCondFactLabel f = (M.! f) <$> gets condFactLabels
 
 class (Monad m) => MonadProof m where
+  derivedRule :: String -> [Fact] -> [CondFact] -> m Fact -> m Fact
+  failProof :: String -> m a
   assume :: Phi -> (Fact -> m Fact) -> m CondFact
   prem   :: Phi -> m Fact
   and_el :: Fact -> m Fact
@@ -138,21 +141,26 @@ checkTauto proof =
     Left err -> Left err
     Right (Fact phi) -> Right ([] :- phi)
 
-checkLatex :: LatexProof Fact -> Either String String
-checkLatex proof =
-  case (runReaderT (runProof (runStateT (runLatex proof) initState)) (Context [])) of
+checkLatex :: Sequent -> LatexProof Fact -> Either String String
+checkLatex (prems :- phi) proof =
+  case (runReaderT (runProof (runStateT (runLatex proof) initState)) (Context prems)) of
     Left err -> Left err
-    Right (_, s) -> Right . wrap . concat . intersperse "\n" . reverse $ outLines s
+    Right (Fact phi', s) ->
+      if phi == phi'
+         then Right . wrap . concat . intersperse "\n" . reverse $ outLines s
+         else Left $ "checkLatex: invalid conclusion: reached '"
+                     ++ show phi' ++ "', expected '"
+                     ++ show phi ++ "'"
    where
      wrap s = "\\begin{proofbox}\n" ++ s ++ "\n\\end{proofbox}\n"
      initState = LS [] (M.fromList []) (M.fromList []) freshNames
      freshNames = ["l" ++ show n | n <- [1..]]
 
 -- |Proof signature. (For debugging proofs).
-(.::) :: Proof Fact -> Phi -> Proof Fact
+(.::) :: (MonadProof m) => m Fact -> Phi -> m Fact
 p .:: f' = do
   (Fact f) <- p
-  when (f /= f') . throwError $
+  when (f /= f') . failProof $
     "Conclusion mismatch: Got '" ++ show f ++ "' expected '" ++ show f' ++ "'"
   return (Fact f)
 
@@ -160,6 +168,9 @@ infixl 0 .::
 
 
 instance MonadProof Proof where
+  derivedRule _ _ _ m = m
+
+  failProof = throwError
 
   assume p m = do f <- local (\ctx -> ctx { premises = p:premises ctx} ) (m (Fact p))
                   return $ CondFact p (getFact f)
@@ -221,6 +232,14 @@ instance MonadProof Proof where
 
 
 instance MonadProof LatexProof where
+  derivedRule name deps cdeps proof = do
+    s <- get
+    (fact, s') <- LP . lift $ runStateT (runLatex proof) s
+    put $ s' {outLines = outLines s} -- Suppress output from proof
+    writeLine' (return fact) name deps cdeps
+
+  failProof = LP . lift . throwError
+
   assume p f = do
     lStart <- getFresh
     writeLine $ "\\[" ++ "\\label{" ++ lStart ++ "}"

@@ -25,7 +25,7 @@ mt imp not_psi =
 pbc :: (MonadProof m) =>
        CondFact    -- ^ Conditional fact of the form 'Bot', depending on 'not a'
     -> m Fact  -- ^ (Proof of) fact of the form 'a'
-pbc cf = do
+pbc cf = derivedRule "\\textsc{pbc}" [] [cf] $ do
   nn_phi <- not_i cf
   nn_e nn_phi
 
@@ -34,7 +34,7 @@ pbc cf = do
 lem :: (MonadProof m) =>
        Phi         -- Any formula 'a'
     -> m Fact  -- (Proof of) fact of the form 'a :|: Not a'
-lem a = do
+lem a = derivedRule "\\textsc{lem}" [] [] $ do
   c_n_goal <- assume (Not (a :|: Not a)) $ \n_a_na -> do
     c_a <- assume a $ \a' -> do
       a_na <- or_il a' (Not a)
